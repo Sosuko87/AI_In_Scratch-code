@@ -4,8 +4,8 @@ import urllib.parse
 import time  # 【追加】送信の合間に少し待つためのタイマー機能
 
 # ================= [設定エリア] =================
-USERNAME = "ZZZBanana"
-PASSWORD = "Walworth1"
+USERNAME = "os.environ.get("SCRATCH_USERNAME")"
+PASSWORD = "os.environ.get("SCRATCH_PASSWORD")"
 PROJECT_ID = "1352722752"
 # ===============================================
 
