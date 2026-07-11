@@ -4,9 +4,11 @@ import urllib.parse
 import time  # 【追加】送信の合間に少し待つためのタイマー機能
 
 # ================= [設定エリア] =================
-USERNAME = "os.environ.get("SCRATCH_USERNAME")"
-SESSION_ID = "os.environ.get("SCRATCH_SESSION_ID")"
+USERNAME = os.environ.get("SCRATCH_USERNAME")
+SESSION_ID = os.environ.get("SCRATCH_SESSION_ID")
 PROJECT_ID = "1352722752"
+# 🔑 セッションIDを「最初」に持ってきます！
+session = sa.login_by_id(SESSION_ID, username=USERNAME)
 # ===============================================
 
 def numbers_to_text(number_string):
