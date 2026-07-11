@@ -1,13 +1,17 @@
 import scratchattach as sa
 import requests
 import urllib.parse
-import time  # 【追加】送信の合間に少し待つためのタイマー機能
+import time
+import os
+from dotenv import load_dotenv
+
+# .envファイルを読み込む
+load_dotenv()
 
 # ================= [設定エリア] =================
-USERNAME = "os.environ.get("SCRATCH_USERNAME")"
-PASSWORD = "os.environ.get("SCRATCH_PASSWORD")"
-PROJECT_ID = "1352722752"
-# ===============================================
+USERNAME = os.environ.get("SCRATCH_USERNAME")
+PASSWORD = os.environ.get("SCRATCH_PASSWORD")
+PROJECT_ID = 1352722752# ===============================================
 
 def numbers_to_text(number_string):
     alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.?!,'"
