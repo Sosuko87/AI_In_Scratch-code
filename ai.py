@@ -9,8 +9,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ================= [設定エリア] =================
-USERNAME = os.environ.get("SCRATCH_USERNAME")
-PASSWORD = os.environ.get("SCRATCH_PASSWORD")
+USERNAME = "ZZZBanana"
+PASSWORD = "Walworth2013"
 PROJECT_ID = 1352722752# ===============================================
 
 def numbers_to_text(number_string):
