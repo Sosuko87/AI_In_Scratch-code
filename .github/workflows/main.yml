@@ -1,31 +1,40 @@
-name: Scratchattach AI
+name: Scratchattach Bot Runner
 
+# 外部からの合図（repository_dispatch）を受け取れるように設定
 on:
-  schedule:
-    # 毎日 日本時間 06:30（UTC 21:30）に自動起動
-    - cron: '30 21 * * *'
-  workflow_dispatch: 
+  repository_dispatch:
+    types: [trigger-ai-bot]
+  workflow_dispatch: # 手動実行用ボタンも残しておく
+
 jobs:
   run-bot:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. コードをサーバーにコピー
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Pythonの準備
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      # 3. scratchattachのインストール
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install scratchattach
 
-      # 4. プログラムの実行
-      - name: Run script
-        run: python ai.py  
+      # 日本時間の「06:30〜21:00」の間だけ実行するように制限をかけます
+      - name: Run script (Time restricted)
+        run: |
+          JST_HOUR=$(date -d "+9 hours" +"%H")
+          JST_MIN=$(date -d "+9 hours" +"%M")
+          echo "Current JST is $JST_HOUR:$JST_MIN"
+          
+          # 6:30前、または21:00以降なら処理をスキップして終了
+          if [ "$JST_HOUR" -lt 6 ] || { [ "$JST_HOUR" -eq 6 ] && [ "$JST_MIN" -lt 30 ]; } || [ "$JST_HOUR" -ge 21 ]; then
+            echo "Outside operating hours (6:30 - 21:00). Skipping execution."
+            exit 0
+          fi
+
+          python ai.py
