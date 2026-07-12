@@ -98,7 +98,7 @@ def on_set(activity):
                     print(f"   -> ☁ text_from_python に送信中: {chunk[:20]}...")
                     conn.set_var("text_from_python", chunk)
                     # Scratchが変数の変化を読み取るための重要なウェイト（0.5秒）
-                    time.sleep(1)
+                    time.sleep(2)
                 
                 # 【重要】すべての分割送信が終わった合図として "00" を送る
                 print("=== [実況] 8. すべてのデータを送り終えたため、終了合図 '00' を送信します ===")
