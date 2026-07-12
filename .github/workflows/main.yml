@@ -1,10 +1,16 @@
-name: Scratchattach Bot Runner
+name: Scratchattach 24/7 Live Bot
 
-# 外部からの合図（repository_dispatch）を受け取れるように設定
 on:
-  repository_dispatch:
-    types: [trigger-ai-bot]
-  workflow_dispatch: # 手動実行用ボタンも残しておく
+  schedule:
+    # 5時間ごとに自動で起動して、前の処理とバトンタッチします
+    # (例: 日本時間 04:00, 09:00, 14:00, 19:00...)
+    - cron: '0 */5 * * *'
+  workflow_dispatch: # 手動起動用ボタン
+
+# 同時に複数が動かないように制御（新しい起動が来たら、古い起動を安全に終了させる）
+concurrency:
+  group: scratch-bot-live-group
+  cancel-in-progress: true # 新しい5時間のタイマーが来たら、古い方を自動で交代（終了）させる
 
 jobs:
   run-bot:
@@ -22,16 +28,15 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install scratchattach
+          pip install scratchattach requests
 
-      # 日本時間の「06:30〜21:00」の間だけ実行するように制限をかけます
-      - name: Run script (Time restricted)
+      # 日本時間の「06:30〜21:00」の間だけ実行するように制限（夜間は動かさない）
+      - name: Run script with time restriction
         run: |
           JST_HOUR=$(date -d "+9 hours" +"%H")
           JST_MIN=$(date -d "+9 hours" +"%M")
           echo "Current JST is $JST_HOUR:$JST_MIN"
           
-          # 6:30前、または21:00以降なら処理をスキップして終了
           if [ "$JST_HOUR" -lt 6 ] || { [ "$JST_HOUR" -eq 6 ] && [ "$JST_MIN" -lt 30 ]; } || [ "$JST_HOUR" -ge 21 ]; then
             echo "Outside operating hours (6:30 - 21:00). Skipping execution."
             exit 0
