@@ -6,7 +6,7 @@ on:
     - cron: '0 */5 * * *'
   workflow_dispatch: # 手動起動用ボタン
 
-# 同時に複数が動かないように制御（新しい起動が来たら、古い起動を安全に終了させる）
+# 同時に複数が動かないように制御
 concurrency:
   group: scratch-bot-live-group
   cancel-in-progress: true 
@@ -31,7 +31,7 @@ jobs:
 
       # 日本時間の「06:30〜21:00」の間だけ実行するように制限（夜間は動かさない）
       - name: Run script with time restriction
-        # 隠し金庫（Secrets）からPythonコードへ安全にアカウント情報を引き渡します
+        # 🔑 ここが最重要！隠し金庫（Secrets）からPythonコードへアカウント情報を引き渡します
         env:
           SCRATCH_USERNAME: ${{ secrets.SCRATCH_USERNAME }}
           SCRATCH_PASSWORD: ${{ secrets.SCRATCH_PASSWORD }}
@@ -45,4 +45,5 @@ jobs:
             exit 0
           fi
 
-          python ai.py # あなたのファイル名が「ai.py」ならこのままでOK
+          # 現在テストに使っている「main.py」を実行する設定にします
+          python main.py
