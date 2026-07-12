@@ -3,14 +3,13 @@ name: Scratchattach 24/7 Live Bot
 on:
   schedule:
     # 5時間ごとに自動で起動して、前の処理とバトンタッチします
-    # (例: 日本時間 04:00, 09:00, 14:00, 19:00...)
     - cron: '0 */5 * * *'
   workflow_dispatch: # 手動起動用ボタン
 
 # 同時に複数が動かないように制御（新しい起動が来たら、古い起動を安全に終了させる）
 concurrency:
   group: scratch-bot-live-group
-  cancel-in-progress: true # 新しい5時間のタイマーが来たら、古い方を自動で交代（終了）させる
+  cancel-in-progress: true 
 
 jobs:
   run-bot:
@@ -28,10 +27,14 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install scratchattach requests
+          pip install scratchattach requests python-dotenv
 
       # 日本時間の「06:30〜21:00」の間だけ実行するように制限（夜間は動かさない）
       - name: Run script with time restriction
+        # 隠し金庫（Secrets）からPythonコードへ安全にアカウント情報を引き渡します
+        env:
+          SCRATCH_USERNAME: ${{ secrets.SCRATCH_USERNAME }}
+          SCRATCH_PASSWORD: ${{ secrets.SCRATCH_PASSWORD }}
         run: |
           JST_HOUR=$(date -d "+9 hours" +"%H")
           JST_MIN=$(date -d "+9 hours" +"%M")
@@ -42,4 +45,4 @@ jobs:
             exit 0
           fi
 
-          python ai.py
+          python ai.py # あなたのファイル名が「ai.py」ならこのままでOK
