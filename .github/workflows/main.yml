@@ -4,8 +4,7 @@ on:
   schedule:
     # 毎日 日本時間 06:30（UTC 21:30）に自動起動
     - cron: '30 21 * * *'
-  workflow_dispatch: # これがあると画面から手動でいつでも起動できます
-
+  workflow_dispatch: 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
@@ -29,4 +28,4 @@ jobs:
 
       # 4. プログラムの実行
       - name: Run script
-        run: python ai.py  # ※実際のPythonのファイル名が「main.py」でない場合はここを書き換えてください
+        run: python ai.py  
