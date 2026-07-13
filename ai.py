@@ -9,8 +9,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ================= [設定エリア] =================
-USERNAME = "ZZZBanana"
-PASSWORD = "Walworth2013"
+USERNAME = os.environ.get('SCRATCH_USERNAME')
+PASSWORD = os.environ.get('SCRATCH_PASSWORD')
 PROJECT_ID = 1352722752# ===============================================
 
 def numbers_to_text(number_string):
@@ -56,7 +56,7 @@ events = conn.events()
 @events.event
 def on_set(activity):
     if activity.var == "trigger":
-        if activity.value == "0" or activity.value == "":
+        if (len(activity.value))==1:
             return
             
         print("\n=== [実況] 1. ☁ trigger への質問入力を検知しました！ ===")
@@ -64,7 +64,7 @@ def on_set(activity):
             # 1. Scratchからの暗号を英語に戻す
             user_question = numbers_to_text(activity.value)+"(don't use symbols or line breaking. The answer should be lower than 850 letters)"
             print(f"=== [実況] 2. 翻訳した質問: 「{user_question}」 ===")
-            
+            conn.set_var("trigger", "1")
             # 【バグ修正】URLを文字で直接くっつけず、requestsに安全に組み立てさせます。
             # これにより、文字が「aihi」になって繋がらなくなるエラーを100%防ぎます。
             url = f"https://text.pollinations.ai/{urllib.parse.quote(user_question)}"
@@ -73,13 +73,14 @@ def on_set(activity):
             print(f"=== [実況] 3. 確実に届くURLでAIに接続します... ===")
             response = requests.get(url, params=payload, timeout=60)
             print(f"=== [実況] 4. AIの応答コード: {response.status_code} ===")
-            
+            conn.set_var("trigger", "3")
             if response.status_code == 200:
                 ai_reply = response.text.strip()
                 print(f"=== [実況] 5. AIの生回答: 「{ai_reply}」 ===")
                 
                 if "<html" in ai_reply.lower() or "<doctype" in ai_reply.lower():
                     print("❌ [エラー] AIがエラー画面(HTML)を返しました。")
+                    conn.set_var("trigger", "2")
                     return
                 
                 # アルファベット作戦で暗号化
@@ -109,12 +110,14 @@ def on_set(activity):
                 
             else:
                 print(f"❌ [エラー] サーバーエラー: {response.status_code}")
+                conn.set_var("trigger", "2")
         except Exception as e:
             print(f"❌ [重大エラー] 処理中にクラッシュしました: {e}")
             
         finally:
-            conn.set_var("trigger", "0")
+
             print("=== [実況] 9. triggerを0に戻し、次の待機状態に入りました ===")
+            conn.set_var("trigger", "0")
 
 print("Scratchからの質問入力を待っています...（分割送信ノード実装・URLバグ修正版）")
 events.start()
