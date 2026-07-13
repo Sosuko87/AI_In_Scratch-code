@@ -4,7 +4,6 @@ import urllib.parse
 import time
 import os
 
-# .envファイルを読み込む
 
 # ================= [設定エリア] =================
 USERNAME = os.environ.get('SCRATCH_USERNAME')
