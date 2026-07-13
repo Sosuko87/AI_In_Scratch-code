@@ -6,8 +6,8 @@ import os
 
 
 # ================= [設定エリア] =================
-USERNAME = os.environ.get('SCRATCH_USERNAME')
-PASSWORD = os.environ.get('SCRATCH_PASSWORD')
+USERNAME = "ZZZBanana"
+PASSWORD = "Walworth2013"
 PROJECT_ID = 1352722752# ===============================================
 
 def numbers_to_text(number_string):
@@ -54,6 +54,8 @@ events = conn.events()
 def on_set(activity):
     if activity.var == "trigger":
         if (len(activity.value))==1:
+            return
+        if activity.user == USERNAME:
             return
             
         print("\n=== [実況] 1. ☁ trigger への質問入力を検知しました！ ===")
