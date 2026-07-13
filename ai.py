@@ -110,9 +110,9 @@ def on_set(activity):
             print(f"❌ [重大エラー] 処理中にクラッシュしました: {e}")
             
         finally:
-
-            print("=== [実況] 9. triggerを0に戻し、次の待機状態に入りました ===")
             conn.set_var("trigger", "0")
+            print("=== [実況] 9. triggerを0に戻し、次の待機状態に入りました ===")
+            
 
 print("Scratchからの質問入力を待っています...（分割送信ノード実装・URLバグ修正版）")
 events.start()
