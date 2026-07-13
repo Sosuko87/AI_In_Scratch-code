@@ -59,11 +59,9 @@ def on_set(activity):
         print("\n=== [実況] 1. ☁ trigger への質問入力を検知しました！ ===")
         try:
             # 1. Scratchからの暗号を英語に戻す
-            user_question = numbers_to_text(activity.value)+"(don't use symbols or line breaking. The answer should be lower than 850 letters)"
+            user_question = numbers_to_text(activity.value)+"(don't use symbols or line breaking.)"
             print(f"=== [実況] 2. 翻訳した質問: 「{user_question}」 ===")
             conn.set_var("trigger", "1")
-            # 【バグ修正】URLを文字で直接くっつけず、requestsに安全に組み立てさせます。
-            # これにより、文字が「aihi」になって繋がらなくなるエラーを100%防ぎます。
             url = f"https://text.pollinations.ai/{urllib.parse.quote(user_question)}"
             payload = {'model': 'openai'}
             
