@@ -4,35 +4,44 @@ import urllib.parse
 import time
 import os
 
-# ================= [設定エリア] =================
-USERNAME = "ZZZBanana"
-PASSWORD = "Walworth2013"
-PROJECT_ID = 1352722752
-# ===============================================
 
-# 変換ロジックは前回同様
+# ================= [設定エリア] =================
+USERNAME = os.environ.get('SCRATCH_USERNAME')
+PASSWORD = os.environ.get('SCRATCH_PASSWORD')
+PROJECT_ID = 1352722752# ===============================================
+
 def numbers_to_text(number_string):
     alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.?!,'"
     text = ""
-    if len(number_string) % 2 != 0: number_string += "0"
+    if len(number_string) % 2 != 0:
+        number_string += "0"
     for i in range(0, len(number_string), 2):
         code_str = number_string[i:i+2]
+        if not code_str or len(code_str) < 2:
+            continue
         try:
             code = int(code_str)
-            if code == 78: text += " "
+            if code == 78:
+                text += " "
             else:
                 index = code - 9 - 1 
-                if 0 <= index < len(alphabet): text += alphabet[index]
-        except: pass
+                if 0 <= index < len(alphabet):
+                    text += alphabet[index]
+        except:
+            pass
     return text
 
 def text_to_numbers(text):
     alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.?!,'"
     encoded = ""
     for char in text:
-        if char == " ": encoded += "78"
-        elif char in alphabet: encoded += str(alphabet.index(char) + 1 + 9)
-        else: encoded += "76"
+        if char == " ":
+            encoded += "78"
+        elif char in alphabet:
+            code = alphabet.index(char) + 1 + 9
+            encoded += str(code)
+        else:
+            encoded += "76"
     return encoded
 
 session = sa.login(USERNAME, PASSWORD)
@@ -44,38 +53,66 @@ events = conn.events()
 @events.event
 def on_set(activity):
     if activity.var == "trigger":
-        val = str(activity.value).strip()
-        
-        # === 【最重要】バグを強制ストップする超厳格ブレーキ ===
-        # 1. 変更したのが自分（Bot）なら処理しない
-        # 2. 空、1桁以下、状態管理用（0,1,2,3,00）、奇数長さなら処理しない
-        if activity.user == USERNAME or not val or len(val) <= 1 or val in ["0", "1", "2", "3", "00"] or len(val) % 2 != 0:
+        if (len(activity.value))==1:
             return
-        # ===================================================
-        
-        print(f"\n✅ 有効な質問を検知: {val[:10]}...")
+            
+        print("\n=== [実況] 1. ☁ trigger への質問入力を検知しました！ ===")
         try:
-            user_question = numbers_to_text(val) + "(don't use symbols or line breaking.)"
+            # 1. Scratchからの暗号を英語に戻す
+            user_question = numbers_to_text(activity.value)+"(don't use symbols or line breaking.)"
+            print(f"=== [実況] 2. 翻訳した質問: 「{user_question}」 ===")
             conn.set_var("trigger", "1")
+            url = f"https://text.pollinations.ai/{urllib.parse.quote(user_question)}"
+            payload = {'model': 'openai'}
             
-            url = f"https://pollinations.ai/{urllib.parse.quote(user_question)}"
-            response = requests.get(url, params={'model': 'openai'}, timeout=60)
+            print(f"=== [実況] 3. 確実に届くURLでAIに接続します... ===")
+            response = requests.get(url, params=payload, timeout=60)
+            print(f"=== [実況] 4. AIの応答コード: {response.status_code} ===")
             conn.set_var("trigger", "3")
-            
             if response.status_code == 200:
                 ai_reply = response.text.strip()
+                print(f"=== [実況] 5. AIの生回答: 「{ai_reply}」 ===")
+                
+                if "<html" in ai_reply.lower() or "<doctype" in ai_reply.lower():
+                    print("❌ [エラー] AIがエラー画面(HTML)を返しました。")
+                    conn.set_var("trigger", "2")
+                    return
+                
+                # アルファベット作戦で暗号化
                 number_string = text_to_numbers(ai_reply)
+                print(f"=== [実況] 6. 返答全体の暗号化結果 (総数字数: {len(number_string)}文字) ===")
                 
-                # 分割送信
-                for i in range(0, len(number_string), 240):
-                    conn.set_var("text_from_python", number_string[i:i+240])
+                # 【新ノード】文字分割送信システム
+                # Scratchの上限である256文字を超えないように、240文字ずつに切り分けます。
+                chunk_size = 240
+                total_length = len(number_string)
+                
+                print(f"=== [実況] 7. 分割送信を開始します（サイズ: {chunk_size}文字ずつ） ===")
+                
+                for i in range(0, total_length, chunk_size):
+                    chunk = number_string[i:i+chunk_size]
+                    print(f"   -> ☁ text_from_python に送信中: {chunk[:20]}...")
+                    conn.set_var("text_from_python", chunk)
+                    # Scratchが変数の変化を読み取るための重要なウェイト（0.5秒）
                     time.sleep(2)
-                conn.set_var("text_from_python", "00")
-            else:
-                conn.set_var("trigger", "2")
                 
-        except Exception as e: print(f"❌ エラー: {e}")
-        finally: conn.set_var("trigger", "0")
+                # 【重要】すべての分割送信が終わった合図として "00" を送る
+                print("=== [実況] 8. すべてのデータを送り終えたため、終了合図 '00' を送信します ===")
+                conn.set_var("text_from_python", "00")
+                time.sleep(0.5)
+                
+                print("✨ [大成功] すべての分割データをScratchに送信完了しました！")
+                
+            else:
+                print(f"❌ [エラー] サーバーエラー: {response.status_code}")
+                conn.set_var("trigger", "2")
+        except Exception as e:
+            print(f"❌ [重大エラー] 処理中にクラッシュしました: {e}")
+            
+        finally:
+            conn.set_var("trigger", "0")
+            print("=== [実況] 9. triggerを0に戻し、次の待機状態に入りました ===")
+            
 
-print("待機中...")
-events.start(blocking=True)
+print("Scratchからの質問入力を待っています...（分割送信ノード実装・URLバグ修正版）")
+events.start()
