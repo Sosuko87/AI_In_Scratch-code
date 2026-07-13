@@ -98,7 +98,7 @@ def on_set(activity):
                 
                 # 【重要】すべての分割送信が終わった合図として "00" を送る
                 print("=== [実況] 8. すべてのデータを送り終えたため、終了合図 '00' を送信します ===")
-                conn.set_var("text_from_python", "00")
+                conn.set_var("text_from_python", "1")
                 time.sleep(0.5)
                 
                 print("✨ [大成功] すべての分割データをScratchに送信完了しました！")
