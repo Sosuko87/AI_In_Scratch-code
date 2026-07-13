@@ -53,7 +53,7 @@ events = conn.events()
 @events.event
 def on_set(activity):
     if activity.var == "trigger":
-        if (len(activity.value))==1:
+        if (len(activity.value))==1 or "text_from_python"==1:
             return
             
         print("\n=== [実況] 1. ☁ trigger への質問入力を検知しました！ ===")
