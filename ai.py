@@ -52,10 +52,17 @@ events = conn.events()
 
 @events.event
 def on_set(activity):
+@events.event
+def on_set(activity):
     if activity.var == "trigger":
-        if (len(activity.value))==1:
-            return
+        # === [バグ対策の超厳格ブレーキ] ===
+        
+        # 1. 変更したのが自分自身(Bot)なら絶対に無視する（自作自演ループ防止）
         if activity.user == USERNAME:
+            return
+            
+        # 2. 文字数が1桁、または値が "0" や "1" や "3" なら無視する
+        if len(activity.value) <= 1 or activity.value in ["0", "1", "2", "3"]:
             return
             
         print("\n=== [実況] 1. ☁ trigger への質問入力を検知しました！ ===")
