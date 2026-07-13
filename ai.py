@@ -3,7 +3,6 @@ import requests
 import urllib.parse
 import time
 import os
-from dotenv import load_dotenv
 
 # .envファイルを読み込む
 load_dotenv()
