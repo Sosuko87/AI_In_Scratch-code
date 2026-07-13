@@ -6,8 +6,8 @@ import os
 
 
 # ================= [設定エリア] =================
-USERNAME = os.environ.get('SCRATCH_USERNAME')
-PASSWORD = os.environ.get('SCRATCH_PASSWORD')
+USERNAME = 'ZZZBanana'
+PASSWORD = 'Walworth2013'
 PROJECT_ID = 1352722752# ===============================================
 
 def numbers_to_text(number_string):
@@ -41,7 +41,7 @@ def text_to_numbers(text):
             code = alphabet.index(char) + 1 + 9
             encoded += str(code)
         else:
-            encoded += "76"
+            encoded += "79"
     return encoded
 
 session = sa.login(USERNAME, PASSWORD)
@@ -53,13 +53,13 @@ events = conn.events()
 @events.event
 def on_set(activity):
     if activity.var == "trigger":
-        if (len(activity.value))==1 or "text_from_python"==1:
+        if len(activity.value) == 1:
             return
             
         print("\n=== [実況] 1. ☁ trigger への質問入力を検知しました！ ===")
         try:
             # 1. Scratchからの暗号を英語に戻す
-            user_question = numbers_to_text(activity.value)+"(You can only use alphabets, numbers and terminal punctuations)"
+            user_question = numbers_to_text(activity.value)+"(You can only use alphabets, spaces, numbers and terminal punctuations)"
             print(f"=== [実況] 2. 翻訳した質問: 「{user_question}」 ===")
             conn.set_var("trigger", "1")
             url = f"https://text.pollinations.ai/{urllib.parse.quote(user_question)}"
@@ -94,7 +94,7 @@ def on_set(activity):
                     print(f"   -> ☁ text_from_python に送信中: {chunk[:20]}...")
                     conn.set_var("text_from_python", chunk)
                     # Scratchが変数の変化を読み取るための重要なウェイト（0.5秒）
-                    time.sleep(2)
+                    time.sleep(.5)
                 
                 # 【重要】すべての分割送信が終わった合図として "00" を送る
                 print("=== [実況] 8. すべてのデータを送り終えたため、終了合図 '00' を送信します ===")
