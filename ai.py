@@ -59,7 +59,7 @@ def on_set(activity):
         print("\n=== [実況] 1. ☁ trigger への質問入力を検知しました！ ===")
         try:
             # 1. Scratchからの暗号を英語に戻す
-            user_question = numbers_to_text(activity.value)+"(don't use symbols or line breaking.)"
+            user_question = numbers_to_text(activity.value)+"(You can only use alphabets, numbers and terminal punctuations)"
             print(f"=== [実況] 2. 翻訳した質問: 「{user_question}」 ===")
             conn.set_var("trigger", "1")
             url = f"https://text.pollinations.ai/{urllib.parse.quote(user_question)}"
