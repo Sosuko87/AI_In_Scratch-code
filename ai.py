@@ -55,29 +55,6 @@ events = conn.events()
 def process_room_request(room_num, activity_value):
     trigger_var = f"trigger{room_num}"
     text_var = f"text_from_python{room_num}"
-        
-    # ───【最新タイマーリセット管理システム】───
-    if not hasattr(process_room_request, "timer_counts"):
-        process_room_request.timer_counts = {}
-    
-    # この部屋の現在のタイマーIDを1つ進める（古いタイマーを過去にする）
-    current_count = process_room_request.timer_counts.get(room_num, 0) + 1
-    process_room_request.timer_counts[room_num] = current_count
-
-    # タイムアウト監視用のタイマー関数
-    def timeout_trigger(my_count):
-        time.sleep(180)  # テストが終わったらここを 180 に変更してください
-        
-        # もしこのタイマーが「最新のタイマー」じゃなくなっていたら、何もせず終了（キャンセル）
-        if process_room_request.timer_counts.get(room_num) != my_count:
-            return
-            
-        if conn.get_var(trigger_var) != "0": 
-            print(f"⚠️ 180秒経過したためタイムアウトします（triggerを9に変更）")
-            conn.set_var(trigger_var, "9")
-    timer_thread = threading.Thread(target=timeout_trigger, args=(current_count,))
-    timer_thread.daemon = True
-    timer_thread.start()
     
     print(f"\n🚀 [スレッド起動] 部屋{room_num} の処理をバックグラウンドで開始します。")
     
@@ -126,21 +103,14 @@ def process_room_request(room_num, activity_value):
         print(f"❌ [部屋{room_num} 重大エラー] クラッシュしました: {e}")
         
     finally:
-        # もし10秒タイマーが先に発動して「9」に書き換えていたら、0に戻さずにそのまま維持します
-        if conn.get_var(trigger_var) != "9":
-            conn.set_var(trigger_var, "0")
+        conn.set_var(trigger_var, "0")
         print(f"🏁 [スレッド終了] 部屋{room_num} の処理が終わり、待機状態に戻りました。")
-
 
 
 @events.event
 def on_set(activity):
     if activity.var in ["trigger1", "trigger2", "trigger3", "trigger4"]:
         if len(activity.value) == 1:
-            if activity.value == "8":
-                timer_thread = threading.Thread(target=timeout_trigger, args=(current_count,))
-                timer_thread.daemon = True
-                timer_thread.start()                
             return
             
         room_num = activity.var.replace("trigger", "")
