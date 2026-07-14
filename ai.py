@@ -6,8 +6,8 @@ import os
 
 
 # ================= [設定エリア] =================
-USERNAME = 'ZZZBanana'
-PASSWORD = 'Walworth2013'
+USERNAME = os.environ.get('SCRATCH_USERNAME')
+PASSWORD = os.environ.get('SCRATCH_PASSWORD')
 PROJECT_ID = 1352722752# ===============================================
 
 def numbers_to_text(number_string):
