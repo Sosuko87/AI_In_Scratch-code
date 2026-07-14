@@ -9,7 +9,14 @@ import threading  # 【新機能】同時に別々の処理を走らせるため
 USERNAME = os.environ.get('SCRATCH_USERNAME')
 PASSWORD = os.environ.get('SCRATCH_PASSWORD')
 PROJECT_ID = 1352722752
+
+# 🕒 【ここでタイマーの時間を設定できます】 🕒
+# AIの応答を何秒待つか（タイムアウト秒数）を設定してください。デフォルトは3分（180秒）です。
+TIMEOUT_SECONDS = 180
 # ===============================================
+
+# ルームごとの最新タイマーIDを管理する辞書
+room_timer_counts = {}
 
 def numbers_to_text(number_string):
     alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.?!,'"
@@ -51,10 +58,38 @@ print(f"ログイン成功: {session.username}")
 
 events = conn.events()
 
+# タイムアウトを監視する関数
+def timeout_monitor(room_num, my_count):
+    # 設定エリアで指定した秒数だけ待機します
+    time.sleep(TIMEOUT_SECONDS)
+    
+    # もし待っている間に新しい質問が来てタイマーが更新されていたら、この古いタイマーは無視して終了
+    if room_timer_counts.get(room_num) != my_count:
+        return
+        
+    trigger_var = f"trigger{room_num}"
+    try:
+        # まだ処理中（0に戻っていない）なら、180秒経ったのでタイムアウト（9に変える）
+        if conn.get_var(trigger_var) != "0":
+            print(f"⚠️ {TIMEOUT_SECONDS}秒経過したためタイムアウトします（triggerを9に変更）")
+            conn.set_var(trigger_var, "9")
+    except Exception as e:
+        print(f"タイムアウト書き込み失敗: {e}")
+
 # 【新機能】各ルームの処理を完全に独立して実行する中身の関数
 def process_room_request(room_num, activity_value):
     trigger_var = f"trigger{room_num}"
     text_var = f"text_from_python{room_num}"
+    
+    # ───【最新タイマー起動システム】───
+    # この部屋のタイマーIDを1つ進める
+    current_count = room_timer_counts.get(room_num, 0) + 1
+    room_timer_counts[room_num] = current_count
+    
+    # 設定された秒数後に自動で動くタイマースレッドを裏で起動
+    timer_thread = threading.Thread(target=timeout_monitor, args=(room_num, current_count))
+    timer_thread.daemon = True
+    timer_thread.start()
     
     print(f"\n🚀 [スレッド起動] 部屋{room_num} の処理をバックグラウンドで開始します。")
     
@@ -103,7 +138,9 @@ def process_room_request(room_num, activity_value):
         print(f"❌ [部屋{room_num} 重大エラー] クラッシュしました: {e}")
         
     finally:
-        conn.set_var(trigger_var, "0")
+        # もしタイマーが先に発動して「9」に書き換えていたら、0に戻さずにそのまま維持します
+        if conn.get_var(trigger_var) != "9":
+            conn.set_var(trigger_var, "0")
         print(f"🏁 [スレッド終了] 部屋{room_num} の処理が終わり、待機状態に戻りました。")
 
 
