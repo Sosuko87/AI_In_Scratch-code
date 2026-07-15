@@ -114,7 +114,7 @@ def process_room_request(room_num, activity_value):
             
             if "<html" in ai_reply.lower() or "<doctype" in ai_reply.lower():
                 print(f"❌ [部屋{room_num} エラー] AIがエラー画面(HTML)を返しました。")
-                conn.set_var(trigger_var, "2")
+                conn.set_var(trigger_var, "9")
                 return
             
             number_string = text_to_numbers(ai_reply)
@@ -133,7 +133,7 @@ def process_room_request(room_num, activity_value):
             
         else:
             print(f"❌ [部屋{room_num} エラー] サーバーエラー: {response.status_code}")
-            conn.set_var(trigger_var, "2")
+            conn.set_var(trigger_var, "9")
     except Exception as e:
         print(f"❌ [部屋{room_num} 重大エラー] クラッシュしました: {e}")
         
