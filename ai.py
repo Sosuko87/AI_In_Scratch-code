@@ -168,7 +168,3 @@ try:
         time.sleep(1)
 except KeyboardInterrupt:
     print("プログラムを終了します。")
-
-# イベントループを安全に停止させて、Pythonを終了する
-events.stop()
-print("👋 クラウド監視を終了しました。次のワークフローへの召喚バトンタッチに移ります。")
