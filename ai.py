@@ -81,7 +81,7 @@ def process_room_request(room_num, activity_value):
     trigger_var = f"trigger{room_num}"
     text_var = f"text_from_python{room_num}"
     
-    # ───【最新タイマー起動システム】───
+    # ───【最新タイマー起動システム】──
     # この部屋のタイマーIDを1つ進める
     current_count = room_timer_counts.get(room_num, 0) + 1
     room_timer_counts[room_num] = current_count
