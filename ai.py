@@ -10,9 +10,13 @@ USERNAME = os.environ.get('SCRATCH_USERNAME')
 PASSWORD = os.environ.get('SCRATCH_PASSWORD')
 PROJECT_ID = 1352722752
 
-# 🕒 【ここでタイマーの時間を設定できます】 🕒
-# AIの応答を何秒待つか（タイムアウト秒数）を設定してください。デフォルトは3分（180秒）です。
+# AIの応答を何秒待つか（タイムアウト秒数）
 TIMEOUT_SECONDS = 180
+
+# 🕒 【新設定：このプログラム自体の寿命】 🕒
+# GitHub Actionsが4時間58分（17880秒）でループを止めるため、
+# Python側は4時間55分（17700秒）で安全にリスナーを停止して終了させます。
+LIFETIME_SECONDS = 17700  # 295分（4時間55分）
 # ===============================================
 
 # ルームごとの最新タイマーIDを管理する辞書
@@ -60,23 +64,18 @@ events = conn.events()
 
 # タイムアウトを監視する関数
 def timeout_monitor(room_num, my_count):
-    # 設定エリアで指定した秒数だけ待機します
     time.sleep(TIMEOUT_SECONDS)
-    
-    # もし待っている間に新しい質問が来てタイマーが更新されていたら、この古いタイマーは無視して終了
     if room_timer_counts.get(room_num) != my_count:
         return
-        
     trigger_var = f"trigger{room_num}"
     try:
-        # まだ処理中（0に戻っていない）なら、180秒経ったのでタイムアウト（9に変える）
         if conn.get_var(trigger_var) != "0":
             print(f"⚠️ {TIMEOUT_SECONDS}秒経過したためタイムアウトします（triggerを9に変更）")
             conn.set_var(trigger_var, "9")
     except Exception as e:
         print(f"タイムアウト書き込み失敗: {e}")
 
-# 【新機能】各ルームの処理を完全に独立して実行する中身の関数
+# 各ルームの処理を完全に独立して実行する中身の関数
 def process_room_request(room_num, activity_value):
     trigger_var = f"trigger{room_num}"
     text_var = f"text_from_python{room_num}"
@@ -86,7 +85,6 @@ def process_room_request(room_num, activity_value):
     current_count = room_timer_counts.get(room_num, 0) + 1
     room_timer_counts[room_num] = current_count
     
-    # 設定された秒数後に自動で動くタイマースレッドを裏で起動
     timer_thread = threading.Thread(target=timeout_monitor, args=(room_num, current_count))
     timer_thread.daemon = True
     timer_thread.start()
@@ -94,7 +92,6 @@ def process_room_request(room_num, activity_value):
     print(f"\n🚀 [スレッド起動] 部屋{room_num} の処理をバックグラウンドで開始します。")
     
     try:
-        # 1. Scratchからの暗号を英語に戻す
         user_question = numbers_to_text(activity_value) + "(You can only use alphabets, spaces, numbers and terminal punctuations)"
         print(f"=== [部屋{room_num}] 翻訳した質問: 「{user_question}」 ===")
         
@@ -114,7 +111,7 @@ def process_room_request(room_num, activity_value):
             
             if "<html" in ai_reply.lower() or "<doctype" in ai_reply.lower():
                 print(f"❌ [部屋{room_num} エラー] AIがエラー画面(HTML)を返しました。")
-                conn.set_var(trigger_var, "2")
+                conn.set_var(trigger_var, "9")
                 return
             
             number_string = text_to_numbers(ai_reply)
@@ -133,12 +130,11 @@ def process_room_request(room_num, activity_value):
             
         else:
             print(f"❌ [部屋{room_num} エラー] サーバーエラー: {response.status_code}")
-            conn.set_var(trigger_var, "2")
+            conn.set_var(trigger_var, "9")
     except Exception as e:
         print(f"❌ [部屋{room_num} 重大エラー] クラッシュしました: {e}")
         
     finally:
-        # もしタイマーが先に発動して「9」に書き換えていたら、0に戻さずにそのまま維持します
         if conn.get_var(trigger_var) != "9":
             conn.set_var(trigger_var, "0")
         print(f"🏁 [スレッド終了] 部屋{room_num} の処理が終わり、待機状態に戻りました。")
@@ -152,17 +148,34 @@ def on_set(activity):
             
         room_num = activity.var.replace("trigger", "")
         
-        # 【重要】イベントを検知したら、実際の処理は別スレッド（Thread）に丸投げする！
-        # これにより、この関数自体は一瞬で終了し、次のルームの検知にすぐ戻れます。
         t = threading.Thread(target=process_room_request, args=(room_num, activity.value))
-        t.daemon = True  # プログラム終了時に一緒に終了するように設定
-        t.start()        # ルーム個別の並行処理をスタート！
+        t.daemon = True
+        t.start()
 
 print("Scratchからの質問入力を待っています...（4部屋完全同時・マルチスレッド版）")
-events.start()
 
+# ───【修正：イベントリスナーの起動方法を変更】───
+# thread=True を指定することで、メイン処理を止めずに裏でScratchの監視を開始します
+events.start(thread=True)
+
+# ───【修正：5時間カウントダウンシステムをメインスレッドで実行】───
+start_time = time.time()
 try:
     while True:
+        # 現在の経過時間を計算
+        elapsed = time.time() - start_time
+        
+        # 4時間55分（17700秒）経ったらループを抜けて終了処理へ進む
+        if elapsed >= LIFETIME_SECONDS:
+            print(f"⏰ 予定の稼働時間（{LIFETIME_SECONDS}秒）に達しました。安全に終了します。")
+            break
+            
         time.sleep(1)
+        
 except KeyboardInterrupt:
-    print("プログラムを終了します。")
+    print("ユーザー操作によりプログラムを終了します。")
+
+finally:
+    # 最後にScratchのイベント監視を安全に停止させて終了する
+    print("👋 Scratchの監視を停止して、プログラムを正常終了します。")
+    events.stop()
