@@ -173,13 +173,9 @@ try:
         time.sleep(1)
         
 except KeyboardInterrupt:
-<<<<<<< HEAD
     print("ユーザー操作によりプログラムを終了します。")
 
 finally:
     # 最後にScratchのイベント監視を安全に停止させて終了する
     print("👋 Scratchの監視を停止して、プログラムを正常終了します。")
     events.stop()
-=======
-    print("プログラムを終了します。")
->>>>>>> 48d92eb6d7f312243fd4ee4e445cc10f5b6aa96d
