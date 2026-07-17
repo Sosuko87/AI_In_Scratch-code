@@ -23,8 +23,6 @@ LIFETIME_SECONDS = 17700  # 295分（4時間55分）
 
 # ルームごとの最新タイマーIDを管理する辞書
 room_timer_counts = {}
-conn = None
-events = None
 
 def numbers_to_text(number_string):
     alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.?!,'"
@@ -60,21 +58,16 @@ def text_to_numbers(text):
             encoded += "79"
     return encoded
 
+session = sa.login(USERNAME, PASSWORD)
+conn = session.connect_cloud(PROJECT_ID)
+print(f"ログイン成功: {session.username}")
 
-def reset_scratch_variables():
-    # Scratchの変数を安全に99にリセットする関数（使い回せるように分離）
-    global conn
-    try:
-        if 'conn' in globals() and conn is not None:
-            print("🔄 Scratchのトリガーをすべて99にリセットしています...")
-            conn.set_var("trigger1", 99)
-            conn.set_var("trigger2", 99)
-            conn.set_var("trigger3", 99)
-            conn.set_var("trigger4", 99)
-            print("✅ リセット完了しました。")
-    except Exception as e_final:
-        print(f"⚠️ 変数リセットに失敗しました（通信切断のため無視します）: {e_final}")
+conn.set_var("trigger1", "9")
+conn.set_var("trigger2", "9")
+conn.set_var("trigger3", "9")
+conn.set_var("trigger4", "9")
 
+events = conn.events()
 
 # タイムアウトを監視する関数
 def timeout_monitor(room_num, my_count):
@@ -111,7 +104,7 @@ def process_room_request(room_num, activity_value):
         
         conn.set_var(trigger_var, "1")
         
-        url = f"https://pollinations.ai{urllib.parse.quote(user_question)}"
+        url = f"https://text.pollinations.ai/{urllib.parse.quote(user_question)}"
         payload = {'model': 'openai'}
         
         response = requests.get(url, params=payload, timeout=60)
@@ -154,6 +147,18 @@ def process_room_request(room_num, activity_value):
         print(f"🏁 [スレッド終了] 部屋{room_num} の処理が終わり、待機状態に戻りました。")
 
 
+@events.event
+def on_set(activity):
+    if activity.var in ["trigger1", "trigger2", "trigger3", "trigger4"]:
+        if len(activity.value) == 1:
+            return
+            
+        room_num = activity.var.replace("trigger", "")
+        
+        t = threading.Thread(target=process_room_request, args=(room_num, activity.value))
+        t.daemon = True
+        t.start()
+
 # ==================== 【手動停止をキャッチする設定】 ====================
 def emergency_shutdown(signum, frame):
     """手動でキャンセル（停止）されたときに強制的に呼び出される関数"""
@@ -166,9 +171,26 @@ signal.signal(signal.SIGINT, emergency_shutdown)   # Ctrl+C 用
 signal.signal(signal.SIGTERM, emergency_shutdown)  # GitHubの「Cancel run」用
 
 
+# ==================== 【共通のリセット関数】 ====================
+def reset_scratch_variables():
+    """Scratchの変数を安全に99にリセットする関数（使い回せるように分離）"""
+    global conn
+    try:
+        if 'conn' in globals() and conn is not None:
+            print("🔄 Scratchのトリガーをすべて99にリセットしています...")
+            conn.set_var("trigger1", "99")
+            conn.set_var("trigger2", "99")
+            conn.set_var("trigger3", "99")
+            conn.set_var("trigger4", "99")
+            print("✅ リセット完了しました。")
+    except Exception as e_final:
+        print(f"⚠️ 変数リセットに失敗しました（通信切断のため無視します）: {e_final}")
+
+
 # ==================== 【メインループ】 ====================
 print("Scratchからの質問入力を待っています...（4部屋完全同時・マルチスレッド版）")
 start_time = time.time()
+
 try:
     while True:
         # 4時間55分（17700秒）経ったら終了
@@ -183,18 +205,11 @@ try:
             try:
                 session = sa.login(USERNAME, PASSWORD)
                 conn = session.connect_cloud(PROJECT_ID)
-                
-                # 【追加箇所】新しく接続が成功した直後、イベント監視が始まる前に確実に99にする
-                reset_scratch_variables()
-
                 events = conn.events()
 
                 @events.event
                 def on_set(activity):
                     if activity.var in ["trigger1", "trigger2", "trigger3", "trigger4"]:
-                        # 99はシステムリセット信号なので、AIリクエスト処理としてはスキップする
-                        if activity.value == "99" or activity.value == 99:
-                            return
                         if len(activity.value) == 1:
                             return
                         room_num = activity.var.replace("trigger", "")
@@ -210,7 +225,7 @@ try:
                     events = None
                     time.sleep(10)
                     continue
-
+                    
             except Exception as e:
                 print(f"❌ 接続失敗（Scratchサーバーの混雑など）: {e}。10秒後に再試行します。")
                 events = None
@@ -227,4 +242,5 @@ finally:
     # 正常終了、または想定内のバグで落ちたときの後処理
     print("👋 プログラムの終了処理を実行します...")
     reset_scratch_variables()
-    print("👋 すべての処理を正常終了しました。")
+
+print("👋 すべての処理を正常終了しました。")
