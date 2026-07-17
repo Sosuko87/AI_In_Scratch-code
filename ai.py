@@ -3,7 +3,7 @@ import requests
 import urllib.parse
 import time
 import os
-import threading  # 【新機能】同時に別々の処理を走らせるためのライブラリ
+import threading
 
 # ================= [設定エリア] =================
 USERNAME = os.environ.get('SCRATCH_USERNAME')
@@ -14,13 +14,14 @@ PROJECT_ID = 1352722752
 TIMEOUT_SECONDS = 180
 
 # 🕒 【新設定：このプログラム自体の寿命】 🕒
-# GitHub Actionsが4時間58分（17880秒）でループを止めるため、
-# Python側は4時間55分（17700秒）で安全にリスナーを停止して終了させます。
 LIFETIME_SECONDS = 17700  # 295分（4時間55分）
 # ===============================================
 
 # ルームごとの最新タイマーIDを管理する辞書
 room_timer_counts = {}
+session = None
+conn = None
+events = None
 
 def numbers_to_text(number_string):
     alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.?!,'"
@@ -56,20 +57,15 @@ def text_to_numbers(text):
             encoded += "79"
     return encoded
 
-session = sa.login(USERNAME, PASSWORD)
-conn = session.connect_cloud(PROJECT_ID)
-print(f"ログイン成功: {session.username}")
-
-events = conn.events()
-
 # タイムアウトを監視する関数
 def timeout_monitor(room_num, my_count):
+    global conn
     time.sleep(TIMEOUT_SECONDS)
     if room_timer_counts.get(room_num) != my_count:
         return
     trigger_var = f"trigger{room_num}"
     try:
-        if conn.get_var(trigger_var) != "0":
+        if conn and conn.get_var(trigger_var) != "0":
             print(f"⚠️ {TIMEOUT_SECONDS}秒経過したためタイムアウトします（triggerを9に変更）")
             conn.set_var(trigger_var, "9")
     except Exception as e:
@@ -77,11 +73,15 @@ def timeout_monitor(room_num, my_count):
 
 # 各ルームの処理を完全に独立して実行する中身の関数
 def process_room_request(room_num, activity_value):
+    global conn
+    if not conn:
+        print(f"❌ [部屋{room_num}] 接続が確立されていないため処理をスキップします。")
+        return
+
     trigger_var = f"trigger{room_num}"
     text_var = f"text_from_python{room_num}"
     
     # ───【最新タイマー起動システム】──
-    # この部屋のタイマーIDを1つ進める
     current_count = room_timer_counts.get(room_num, 0) + 1
     room_timer_counts[room_num] = current_count
     
@@ -135,26 +135,27 @@ def process_room_request(room_num, activity_value):
         print(f"❌ [部屋{room_num} 重大エラー] クラッシュしました: {e}")
         
     finally:
-        if conn.get_var(trigger_var) != "9":
-            conn.set_var(trigger_var, "0")
+        try:
+            if conn and conn.get_var(trigger_var) != "9":
+                conn.set_var(trigger_var, "0")
+        except:
+            pass
         print(f"🏁 [スレッド終了] 部屋{room_num} の処理が終わり、待機状態に戻りました。")
 
-
-@events.event
-def on_set(activity):
-    if activity.var in ["trigger1", "trigger2", "trigger3", "trigger4"]:
-        if len(activity.value) == 1:
-            return
-            
-        room_num = activity.var.replace("trigger", "")
-        
-        t = threading.Thread(target=process_room_request, args=(room_num, activity.value))
-        t.daemon = True
-        t.start()
+# ───【最重要：イベント定義用の関数】───
+def setup_events(target_events):
+    @target_events.event
+    def on_set(activity):
+        if activity.var in ["trigger1", "trigger2", "trigger3", "trigger4"]:
+            if len(activity.value) == 1:
+                return
+            room_num = activity.var.replace("trigger", "")
+            t = threading.Thread(target=process_room_request, args=(room_num, activity.value))
+            t.daemon = True
+            t.start()
 
 print("Scratchからの質問入力を待っています...（4部屋完全同時・マルチスレッド版）")
 
-# ───【修正：安全な自動再接続付きのメインループ】───
 start_time = time.time()
 
 # ───【メインの監視・再接続ループ（通信エラー対策版）】───
@@ -180,13 +181,12 @@ while True:
             # イベントを登録
             setup_events(events)
             
-            # 【重要】通信エラー（SSLWantReadErrorなど）で落ちないようにtry-exceptで囲む
+            # 通信エラー（SSLWantReadErrorなど）で落ちないように制御
             try:
                 events.start(thread=True)
                 print("✅ 接続に成功しました。監視中です。")
             except Exception as e_start:
                 print(f"⚠️ 起動時に通信エラーが発生しました: {e_start}")
-                # 失敗したらeventsをリセットして次のループで再試行させる
                 events = None
                 time.sleep(10)
                 continue
@@ -197,8 +197,6 @@ while True:
             time.sleep(10)
             continue
 
-    # 【重要】バックグラウンドスレッド側でSSLエラー等が起きてrunningがFalseになったかを毎秒監視
     time.sleep(1)
 
 print("👋 すべての処理を正常終了しました。")
-
