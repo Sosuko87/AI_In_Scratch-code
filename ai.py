@@ -59,10 +59,11 @@ def text_to_numbers(text):
 session = sa.login(USERNAME, PASSWORD)
 conn = session.connect_cloud(PROJECT_ID)
 print(f"ログイン成功: {session.username}")
-conn.set_var("trigger1", "99")
-conn.set_var("trigger2", "99")
-conn.set_var("trigger3", "99")
-conn.set_var("trigger4", "99")
+
+conn.set_var("trigger1", "9")
+conn.set_var("trigger2", "9")
+conn.set_var("trigger3", "9")
+conn.set_var("trigger4", "9")
 
 events = conn.events()
 
@@ -199,16 +200,29 @@ while True:
             except Exception as e_start:
                 print(f"⚠️ 起動時に通信エラーが発生しました: {e_start}")
                 events = None  # 【変更点2】次のループで再接続処理を走らせるために初期化
+                conn.set_var("trigger1", "99")
+                conn.set_var("trigger2", "99")
+                conn.set_var("trigger3", "99")
+                conn.set_var("trigger4", "99")
                 time.sleep(10)
                 continue
                 
         except Exception as e:
             print(f"❌ 接続失敗（Scratchサーバーの混雑など）: {e}。10秒後に再試行します。")
             events = None  # 【変更点2】次のループで再接続処理を走らせるために初期化
+            conn.set_var("trigger1", "99")
+            conn.set_var("trigger2", "99")
+            conn.set_var("trigger3", "99")
+            conn.set_var("trigger4", "99")
             time.sleep(10)
             continue
 
     # 1秒ごとにチェック
     time.sleep(1)
 
+
 print("👋 すべての処理を正常終了しました。")
+conn.set_var("trigger1", "99")
+conn.set_var("trigger2", "99")
+conn.set_var("trigger3", "99")
+conn.set_var("trigger4", "99")
