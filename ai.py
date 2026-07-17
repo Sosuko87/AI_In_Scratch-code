@@ -154,28 +154,49 @@ def on_set(activity):
 
 print("Scratchからの質問入力を待っています...（4部屋完全同時・マルチスレッド版）")
 
-# ───【修正：イベントリスナーの起動方法を変更】───
-# thread=True を指定することで、メイン処理を止めずに裏でScratchの監視を開始します
-events.start(thread=True)
-
-# ───【修正：5時間カウントダウンシステムをメインスレッドで実行】───
+# ───【修正：安全な自動再接続付きのメインループ】───
 start_time = time.time()
-try:
-    while True:
-        # 現在の経過時間を計算
-        elapsed = time.time() - start_time
-        
-        # 4時間55分（17700秒）経ったらループを抜けて終了処理へ進む
-        if elapsed >= LIFETIME_SECONDS:
-            print(f"⏰ 予定の稼働時間（{LIFETIME_SECONDS}秒）に達しました。安全に終了します。")
-            break
-            
-        time.sleep(1)
-        
-except KeyboardInterrupt:
-    print("ユーザー操作によりプログラムを終了します。")
 
-finally:
-    # 最後にScratchのイベント監視を安全に停止させて終了する
-    print("👋 Scratchの監視を停止して、プログラムを正常終了します。")
-    events.stop()
+while True:
+    # 4時間55分（17700秒）経ったら終了
+    elapsed = time.time() - start_time
+    if elapsed >= LIFETIME_SECONDS:
+        print(f"⏰ 予定の稼働時間（{LIFETIME_SECONDS}秒）に達しました。安全に終了します。")
+        try:
+            events.stop()
+        except:
+            pass
+        break
+
+    # イベントリスナーが動いていない（または切断された）場合、起動・再接続する
+    if not events.running:
+        print("🔄 Scratchへの接続を開始（または再接続）します...")
+        try:
+            # 毎回セッションとクラウド接続をリフレッシュする
+            session = sa.login(USERNAME, PASSWORD)
+            conn = session.connect_cloud(PROJECT_ID)
+            events = conn.events()
+            
+            # 再度イベントを登録し直す
+            @events.event
+            def on_set(activity):
+                if activity.var in ["trigger1", "trigger2", "trigger3", "trigger4"]:
+                    if len(activity.value) == 1:
+                        return
+                    room_num = activity.var.replace("trigger", "")
+                    t = threading.Thread(target=process_room_request, args=(room_num, activity.value))
+                    t.daemon = True
+                    t.start()
+
+            # 裏スレッドで起動
+            events.start(thread=True)
+            print("✅ 接続に成功しました。監視中です。")
+        except Exception as e:
+            print(f"❌ 接続失敗（Scratchサーバーの混雑など）: {e}。10秒後に再試行します。")
+            time.sleep(10)
+            continue
+
+    # 1秒ごとにチェック
+    time.sleep(1)
+
+print("👋 すべての処理を正常終了しました。")
