@@ -21,9 +21,6 @@ LIFETIME_SECONDS = 17700  # 295分（4時間55分）
 
 # ルームごとの最新タイマーIDを管理する辞書
 room_timer_counts = {}
-session = None
-conn = None
-events = None
 
 def numbers_to_text(number_string):
     alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.?!,'"
@@ -59,9 +56,14 @@ def text_to_numbers(text):
             encoded += "79"
     return encoded
 
+session = sa.login(USERNAME, PASSWORD)
+conn = session.connect_cloud(PROJECT_ID)
+print(f"ログイン成功: {session.username}")
+
+events = conn.events()
+
 # タイムアウトを監視する関数
 def timeout_monitor(room_num, my_count):
-    global conn  # 【バグ対策】再接続したconnを見失わないように追加
     time.sleep(TIMEOUT_SECONDS)
     if room_timer_counts.get(room_num) != my_count:
         return
@@ -75,7 +77,6 @@ def timeout_monitor(room_num, my_count):
 
 # 各ルームの処理を完全に独立して実行する中身の関数
 def process_room_request(room_num, activity_value):
-    global conn  # 【バグ対策】再接続したconnを見失わないように追加
     trigger_var = f"trigger{room_num}"
     text_var = f"text_from_python{room_num}"
     
@@ -96,7 +97,7 @@ def process_room_request(room_num, activity_value):
         
         conn.set_var(trigger_var, "1")
         
-        url = f"https://pollinations.ai/{urllib.parse.quote(user_question)}"
+        url = f"https://text.pollinations.ai/{urllib.parse.quote(user_question)}"
         payload = {'model': 'openai'}
         
         response = requests.get(url, params=payload, timeout=60)
@@ -138,38 +139,36 @@ def process_room_request(room_num, activity_value):
             conn.set_var(trigger_var, "0")
         print(f"🏁 [スレッド終了] 部屋{room_num} の処理が終わり、待機状態に戻りました。")
 
-# ───【バグ対策：イベント定義を独立させて多重登録を防ぐ】───
-def setup_events(target_events):
-    @target_events.event
-    def on_set(activity):
-        if activity.var in ["trigger1", "trigger2", "trigger3", "trigger4"]:
-            if len(activity.value) == 1:
-                return
-                
-            room_num = activity.var.replace("trigger", "")
+
+@events.event
+def on_set(activity):
+    if activity.var in ["trigger1", "trigger2", "trigger3", "trigger4"]:
+        if len(activity.value) == 1:
+            return
             
-            t = threading.Thread(target=process_room_request, args=(room_num, activity.value))
-            t.daemon = True
-            t.start()
+        room_num = activity.var.replace("trigger", "")
+        
+        t = threading.Thread(target=process_room_request, args=(room_num, activity.value))
+        t.daemon = True
+        t.start()
 
 print("Scratchからの質問入力を待っています...（4部屋完全同時・マルチスレッド版）")
 
 # ───【修正：安全な自動再接続付きのメインループ】───
 start_time = time.time()
 
-# ───【メインの監視・再接続ループ（通信エラー対策版）】───
 while True:
+    # 4時間55分（17700秒）経ったら終了
     elapsed = time.time() - start_time
     if elapsed >= LIFETIME_SECONDS:
         print(f"⏰ 予定の稼働時間（{LIFETIME_SECONDS}秒）に達しました。安全に終了します。")
-        if events:
-            try:
-                events.stop()
-            except:
-                pass
+        try:
+            events.stop()
+        except:
+            pass
         break
 
-    # イベントリスナーが動いていない（または切断された）場合に再接続
+    # イベントリスナーが動いていない（または切断された）場合、起動・再接続する
     if events is None or not events.running:
         print("🔄 Scratchへの接続を開始（または再接続）します...")
         try:
@@ -179,25 +178,33 @@ while True:
             events = conn.events()
             
             # 再度イベントを登録し直す
-            setup_events(events)
+            @events.event
+            def on_set(activity):
+                if activity.var in ["trigger1", "trigger2", "trigger3", "trigger4"]:
+                    if len(activity.value) == 1:
+                        return
+                    room_num = activity.var.replace("trigger", "")
+                    t = threading.Thread(target=process_room_request, args=(room_num, activity.value))
+                    t.daemon = True
+                    t.start()
 
-            # 裏スレッドで起動（通信エラーで落ちないように監視）
+            # 【変更点1】裏スレッド起動時にSSLエラー等でクラッシュするのを防ぐ
             try:
                 events.start(thread=True)
                 print("✅ 接続に成功しました。監視中です。")
             except Exception as e_start:
                 print(f"⚠️ 起動時に通信エラーが発生しました: {e_start}")
-                events = None
+                events = None  # 【変更点2】次のループで再接続処理を走らせるために初期化
                 time.sleep(10)
                 continue
                 
         except Exception as e:
             print(f"❌ 接続失敗（Scratchサーバーの混雑など）: {e}。10秒後に再試行します。")
-            events = None
+            events = None  # 【変更点2】次のループで再接続処理を走らせるために初期化
             time.sleep(10)
             continue
 
-    # 【重要】バックグラウンドスレッド側でSSLエラー等が起きてrunningがFalseになったかを毎秒監視
+    # 1秒ごとにチェック
     time.sleep(1)
 
 print("👋 すべての処理を正常終了しました。")
