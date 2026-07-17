@@ -157,72 +157,72 @@ def on_set(activity):
         t.daemon = True
         t.start()
 
+# ==================== 【メインループ】 ====================
 print("Scratchからの質問入力を待っています...（4部屋完全同時・マルチスレッド版）")
-
-# ───【修正：安全な自動再接続付きのメインループ】───
 start_time = time.time()
 
-while True:
-    # 4時間55分（17700秒）経ったら終了
-    elapsed = time.time() - start_time
-    if elapsed >= LIFETIME_SECONDS:
-        print(f"⏰ 予定の稼働時間（{LIFETIME_SECONDS}秒）に達しました。安全に終了します。")
-        try:
-            events.stop()
-        except:
-            pass
-        break
+try:  # 👈 【重要】ループ全体をtryで包む
+    while True:
+        # 4時間55分（17700秒）経ったら終了
+        elapsed = time.time() - start_time
+        if elapsed >= LIFETIME_SECONDS:
+            print(f"⏰ 予定の稼働時間（{LIFETIME_SECONDS}秒）に達しました。安全に終了します。")
+            break
 
-    # イベントリスナーが動いていない（または切断された）場合、起動・再接続する
-    if events is None or not events.running:
-        print("🔄 Scratchへの接続を開始（または再接続）します...")
-        try:
-            # 毎回セッションとクラウド接続をリフレッシュする
-            session = sa.login(USERNAME, PASSWORD)
-            conn = session.connect_cloud(PROJECT_ID)
-            events = conn.events()
-            
-            # 再度イベントを登録し直す
-            @events.event
-            def on_set(activity):
-                if activity.var in ["trigger1", "trigger2", "trigger3", "trigger4"]:
-                    if len(activity.value) == 1:
-                        return
-                    room_num = activity.var.replace("trigger", "")
-                    t = threading.Thread(target=process_room_request, args=(room_num, activity.value))
-                    t.daemon = True
-                    t.start()
-
-            # 【変更点1】裏スレッド起動時にSSLエラー等でクラッシュするのを防ぐ
+        # イベントリスナーが動いていない（または切断された）場合、起動・再接続する
+        if events is None or not events.running:
+            print("🔄 Scratchへの接続を開始（または再接続）します...")
             try:
-                events.start(thread=True)
-                print("✅ 接続に成功しました。監視中です。")
-            except Exception as e_start:
-                print(f"⚠️ 起動時に通信エラーが発生しました: {e_start}")
-                events = None  # 【変更点2】次のループで再接続処理を走らせるために初期化
-                conn.set_var("trigger1", "99")
-                conn.set_var("trigger2", "99")
-                conn.set_var("trigger3", "99")
-                conn.set_var("trigger4", "99")
+                session = sa.login(USERNAME, PASSWORD)
+                conn = session.connect_cloud(PROJECT_ID)
+                events = conn.events()
+
+                @events.event
+                def on_set(activity):
+                    if activity.var in ["trigger1", "trigger2", "trigger3", "trigger4"]:
+                        if len(activity.value) == 1:
+                            return
+                        room_num = activity.var.replace("trigger", "")
+                        t = threading.Thread(target=process_room_request, args=(room_num, activity.value))
+                        t.daemon = True
+                        t.start()
+
+                try:
+                    events.start(thread=True)
+                    print("✅ 接続に成功しました。監視中です。")
+                except Exception as e_start:
+                    print(f"⚠️ 起動時に通信エラーが発生しました: {e_start}")
+                    events = None  # 接続失敗時はScratchへの書き込みをせず、安全に10秒待つ
+                    time.sleep(10)
+                    continue
+                    
+            except Exception as e:
+                print(f"❌ 接続失敗（Scratchサーバーの混雑など）: {e}。10秒後に再試行します。")
+                events = None  # 同上
                 time.sleep(10)
                 continue
-                
-        except Exception as e:
-            print(f"❌ 接続失敗（Scratchサーバーの混雑など）: {e}。10秒後に再試行します。")
-            events = None  # 【変更点2】次のループで再接続処理を走らせるために初期化
+
+        # 1秒ごとにチェック
+        time.sleep(1)
+
+except Exception as e_main:
+    print(f"🚨 ループ内で予期せぬ重大なエラーが発生しました: {e_main}")
+
+finally:  # 👈 【魔法のエリア】正常終了でも、バグによる強制終了でも、再起動でも「死に際」に必ず通る
+    print("👋 プログラムの終了処理（死に際の後処理）を実行します...")
+    
+    # 接続が生きていれば、最後に全部屋を「99」にリセットする（失敗してもクラッシュしないようにする）
+    try:
+        # connが存在し、かつ通信ができる状態ならリセットをかける
+        if 'conn' in locals() and conn is not None:
+            print("🔄 Scratchのトリガーをすべて99にリセットしています...")
             conn.set_var("trigger1", "99")
             conn.set_var("trigger2", "99")
             conn.set_var("trigger3", "99")
             conn.set_var("trigger4", "99")
-            time.sleep(10)
-            continue
-
-    # 1秒ごとにチェック
-    time.sleep(1)
-
+            print("✅ リセット完了しました。")
+    except Exception as e_final:
+        # もしネットが切れていてリセットに失敗しても、エラーを表示するだけでプログラムは安全に終了する
+        print(f"⚠️ 終了時の変数リセットに失敗しました（通信切断のため無視します）: {e_final}")
 
 print("👋 すべての処理を正常終了しました。")
-conn.set_var("trigger1", "99")
-conn.set_var("trigger2", "99")
-conn.set_var("trigger3", "99")
-conn.set_var("trigger4", "99")
