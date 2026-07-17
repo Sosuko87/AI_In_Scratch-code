@@ -3,7 +3,9 @@ import requests
 import urllib.parse
 import time
 import os
-import threading  # 【新機能】同時に別々の処理を走らせるためのライブラリ
+import threading 
+import signal
+import sys
 
 # ================= [設定エリア] =================
 USERNAME = os.environ.get('SCRATCH_USERNAME')
