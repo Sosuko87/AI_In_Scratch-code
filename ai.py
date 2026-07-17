@@ -157,11 +157,39 @@ def on_set(activity):
         t.daemon = True
         t.start()
 
+# ==================== 【手動停止をキャッチする設定】 ====================
+def emergency_shutdown(signum, frame):
+    """手動でキャンセル（停止）されたときに強制的に呼び出される関数"""
+    print(f"\n🛑 手動停止（シグナル {signum}）を検知しました！緊急シャットダウンを開始します。")
+    reset_scratch_variables()
+    sys.exit(0)  # 安全にプログラムを終了させる
+
+# GitHub Actionsのキャンセルボタンや、Ctrl+Cの入力を監視する
+signal.signal(signal.SIGINT, emergency_shutdown)   # Ctrl+C 用
+signal.signal(signal.SIGTERM, emergency_shutdown)  # GitHubの「Cancel run」用
+
+
+# ==================== 【共通のリセット関数】 ====================
+def reset_scratch_variables():
+    """Scratchの変数を安全に99にリセットする関数（使い回せるように分離）"""
+    global conn
+    try:
+        if 'conn' in globals() and conn is not None:
+            print("🔄 Scratchのトリガーをすべて99にリセットしています...")
+            conn.set_var("trigger1", "99")
+            conn.set_var("trigger2", "99")
+            conn.set_var("trigger3", "99")
+            conn.set_var("trigger4", "99")
+            print("✅ リセット完了しました。")
+    except Exception as e_final:
+        print(f"⚠️ 変数リセットに失敗しました（通信切断のため無視します）: {e_final}")
+
+
 # ==================== 【メインループ】 ====================
 print("Scratchからの質問入力を待っています...（4部屋完全同時・マルチスレッド版）")
 start_time = time.time()
 
-try:  # 👈 【重要】ループ全体をtryで包む
+try:
     while True:
         # 4時間55分（17700秒）経ったら終了
         elapsed = time.time() - start_time
@@ -192,13 +220,13 @@ try:  # 👈 【重要】ループ全体をtryで包む
                     print("✅ 接続に成功しました。監視中です。")
                 except Exception as e_start:
                     print(f"⚠️ 起動時に通信エラーが発生しました: {e_start}")
-                    events = None  # 接続失敗時はScratchへの書き込みをせず、安全に10秒待つ
+                    events = None
                     time.sleep(10)
                     continue
                     
             except Exception as e:
                 print(f"❌ 接続失敗（Scratchサーバーの混雑など）: {e}。10秒後に再試行します。")
-                events = None  # 同上
+                events = None
                 time.sleep(10)
                 continue
 
@@ -208,21 +236,9 @@ try:  # 👈 【重要】ループ全体をtryで包む
 except Exception as e_main:
     print(f"🚨 ループ内で予期せぬ重大なエラーが発生しました: {e_main}")
 
-finally:  # 👈 【魔法のエリア】正常終了でも、バグによる強制終了でも、再起動でも「死に際」に必ず通る
-    print("👋 プログラムの終了処理（死に際の後処理）を実行します...")
-    
-    # 接続が生きていれば、最後に全部屋を「99」にリセットする（失敗してもクラッシュしないようにする）
-    try:
-        # connが存在し、かつ通信ができる状態ならリセットをかける
-        if 'conn' in locals() and conn is not None:
-            print("🔄 Scratchのトリガーをすべて99にリセットしています...")
-            conn.set_var("trigger1", "99")
-            conn.set_var("trigger2", "99")
-            conn.set_var("trigger3", "99")
-            conn.set_var("trigger4", "99")
-            print("✅ リセット完了しました。")
-    except Exception as e_final:
-        # もしネットが切れていてリセットに失敗しても、エラーを表示するだけでプログラムは安全に終了する
-        print(f"⚠️ 終了時の変数リセットに失敗しました（通信切断のため無視します）: {e_final}")
+finally:
+    # 正常終了、または想定内のバグで落ちたときの後処理
+    print("👋 プログラムの終了処理を実行します...")
+    reset_scratch_variables()
 
 print("👋 すべての処理を正常終了しました。")
