@@ -59,6 +59,10 @@ def text_to_numbers(text):
 session = sa.login(USERNAME, PASSWORD)
 conn = session.connect_cloud(PROJECT_ID)
 print(f"ログイン成功: {session.username}")
+conn.set_var("trigger1", "99")
+conn.set_var("trigger2", "99")
+conn.set_var("trigger3", "99")
+conn.set_var("trigger4", "99")
 
 events = conn.events()
 
