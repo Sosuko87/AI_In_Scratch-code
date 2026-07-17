@@ -106,7 +106,7 @@ def process_room_request(room_num, activity_value):
         
         conn.set_var(trigger_var, "1")
         
-        url = f"https://pollinations.ai{urllib.parse.quote(user_question)}"
+        url = f"https://pollinations.ai/{urllib.parse.quote(user_question)}"
         payload = {'model': 'openai'}
         
         response = requests.get(url, params=payload, timeout=60)
