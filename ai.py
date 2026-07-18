@@ -104,10 +104,21 @@ def process_room_request(room_num, activity_value):
         
         conn.set_var(trigger_var, "1")
         
+
+        # 1. コピーしたAPIキーをここに貼り付けます
+        API_KEY = "sk_Nw1Z5d0KSRkGUlsGAySvhA5JwAzcdP5L"
+
         url = f"https://text.pollinations.ai/{urllib.parse.quote(user_question)}"
-        payload = {'model': 'openai'}
-        
-        response = requests.get(url, params=payload, timeout=60)
+        payload = {'model': 'mistral'}
+
+        # 2. ヘッダーに認証情報を追加します
+        headers = {
+            "Authorization": f"Bearer {API_KEY}"
+        }
+
+        # 3. headers=headers を追加してリクエストを送ります
+        response = requests.get(url, params=payload, headers=headers, timeout=60)
+
         print(f"=== [部屋{room_num}] AIの応答コード: {response.status_code} ===")
         
         conn.set_var(trigger_var, "3")
