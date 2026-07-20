@@ -7,6 +7,11 @@ import threading
 import signal
 import sys
 
+# =================================================
+# 🔑 スレッド間の衝突を防ぐための「通信専用のロック」
+# =================================================
+scratch_lock = threading.Lock()
+
 # ================= [設定エリア] =================
 USERNAME = os.environ.get('SCRATCH_USERNAME')
 PASSWORD = os.environ.get('SCRATCH_PASSWORD')
@@ -15,14 +20,35 @@ PROJECT_ID = 1352722752
 # AIの応答を何秒待つか（タイムアウト秒数）
 TIMEOUT_SECONDS = 180
 
-# 🕒 【新設定：このプログラム自体の寿命】 🕒
-# GitHub Actionsが4時間58分（17880秒）でループを止めるため、
-# Python側は4時間55分（17700秒）で安全にリスナーを停止して終了させます。
-LIFETIME_SECONDS = 17700  # 295分（4時間55分）
+# GitHub Actionsの制限時間に合わせた稼働寿命（4時間55分）
+LIFETIME_SECONDS = 17700  
 # ===============================================
 
-# ルームごとの最新タイマーIDを管理する辞書
+# 各ルームの最新タイマーIDを管理する辞書
 room_timer_counts = {}
+
+# 🛡️ 【安全な通信関数】マルチスレッドから安全に変数を設定する
+def safe_set_var(var_name, value):
+    global conn
+    with scratch_lock:  # 他のスレッドが送信中なら順番待ちをする
+        if 'conn' in globals() and conn is not None:
+            try:
+                conn.set_var(var_name, value)
+                time.sleep(0.15)  # Scratch側での連投BAN（切断）を防ぐウェイト
+            except Exception as e:
+                print(f"⚠️ [safe_set_var] 送信エラー ({var_name} -> {value}): {e}")
+
+# 🛡️ 【安全な通信関数】マルチスレッドから安全に変数を取得する
+def safe_get_var(var_name):
+    global conn
+    with scratch_lock:
+        if 'conn' in globals() and conn is not None:
+            try:
+                return conn.get_var(var_name)
+            except Exception as e:
+                print(f"⚠️ [safe_get_var] 受信エラー ({var_name}): {e}")
+    return None
+
 
 def numbers_to_text(number_string):
     alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.?!,'"
@@ -45,6 +71,7 @@ def numbers_to_text(number_string):
             pass
     return text
 
+
 def text_to_numbers(text):
     alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.?!,'"
     encoded = ""
@@ -58,16 +85,6 @@ def text_to_numbers(text):
             encoded += "79"
     return encoded
 
-session = sa.login(USERNAME, PASSWORD)
-conn = session.connect_cloud(PROJECT_ID)
-print(f"ログイン成功: {session.username}")
-
-conn.set_var("trigger1", "9")
-conn.set_var("trigger2", "9")
-conn.set_var("trigger3", "9")
-conn.set_var("trigger4", "9")
-
-events = conn.events()
 
 # タイムアウトを監視する関数
 def timeout_monitor(room_num, my_count):
@@ -76,21 +93,22 @@ def timeout_monitor(room_num, my_count):
         return
     trigger_var = f"trigger{room_num}"
     try:
-        if conn.get_var(trigger_var) != "0":
+        if safe_get_var(trigger_var) != "0":
             print(f"⚠️ {TIMEOUT_SECONDS}秒経過したためタイムアウトします（triggerを9に変更）")
-            conn.set_var(trigger_var, "9")
+            safe_set_var(trigger_var, "9")
     except Exception as e:
         print(f"タイムアウト書き込み失敗: {e}")
 
-# 各ルームの処理を完全に独立して実行する中身の関数
+
+# 各ルームの処理を完全に独立して実行するメイン関数
 def process_room_request(room_num, activity_value):
     trigger_var = f"trigger{room_num}"
     text_var = f"text_from_python{room_num}"
     
+    # ───【最新タイマー起動システム】──
     current_count = room_timer_counts.get(room_num, 0) + 1
     room_timer_counts[room_num] = current_count
     
-    # ───【最新タイマー起動システム】──
     timer_thread = threading.Thread(target=timeout_monitor, args=(room_num, current_count))
     timer_thread.daemon = True
     timer_thread.start()
@@ -101,15 +119,15 @@ def process_room_request(room_num, activity_value):
         user_question = numbers_to_text(activity_value) + "(You can only use alphabets, spaces, numbers and terminal punctuations)"
         print(f"=== [部屋{room_num}] 翻訳した質問: 「{user_question}」 ===")
         
-        safe_set_var(trigger_var, "1")  # 👈 差し替え
+        safe_set_var(trigger_var, "1")
         
-        url = f"https://text.pollinations.ai/{urllib.parse.quote(user_question)}"
+        url = f"https://pollinations.ai/{urllib.parse.quote(user_question)}"
         payload = {'model': 'openai'}
         
         response = requests.get(url, params=payload, timeout=60)
         print(f"=== [部屋{room_num}] AIの応答コード: {response.status_code} ===")
         
-        safe_set_var(trigger_var, "3")  # 👈 差し替え
+        safe_set_var(trigger_var, "3")
         
         if response.status_code == 200:
             ai_reply = response.text.strip()
@@ -117,7 +135,7 @@ def process_room_request(room_num, activity_value):
             
             if "<html" in ai_reply.lower() or "<doctype" in ai_reply.lower():
                 print(f"❌ [部屋{room_num} エラー] AIがエラー画面(HTML)を返しました。")
-                safe_set_var(trigger_var, "9")  # 👈 差し替え
+                safe_set_var(trigger_var, "9")
                 return
             
             number_string = text_to_numbers(ai_reply)
@@ -127,48 +145,37 @@ def process_room_request(room_num, activity_value):
             
             for i in range(0, total_length, chunk_size):
                 chunk = number_string[i:i+chunk_size]
-                safe_set_var(text_var, chunk)  # 👈 差し替え
-                time.sleep(0.4)  # safe_set_var内のウェイト(0.15s)と合わせて約0.55秒空くため安全
+                safe_set_var(text_var, chunk)
+                time.sleep(0.4)
             
-            safe_set_var(text_var, "1")  # 👈 差し替え
+            safe_set_var(text_var, "1")
             time.sleep(0.5)
             print(f"✨ [部屋{room_num} 大成功] すべてのデータを送信完了しました！")
             
         else:
             print(f"❌ [部屋{room_num} エラー] サーバーエラー: {response.status_code}")
-            safe_set_var(trigger_var, "9")  # 👈 差し替え
+            safe_set_var(trigger_var, "9")
     except Exception as e:
         print(f"❌ [部屋{room_num} 重大エラー] クラッシュしました: {e}")
         
     finally:
-        if safe_get_var(trigger_var) != "9":  # 👈 差し替え
-            safe_set_var(trigger_var, "0")    # 👈 差し替え
+        if safe_get_var(trigger_var) != "9":
+            safe_set_var(trigger_var, "0")
         print(f"🏁 [スレッド終了] 部屋{room_num} の処理が終わり、待機状態に戻りました。")
 
 
-@events.event
-def on_set(activity):
-    if activity.var in ["trigger1", "trigger2", "trigger3", "trigger4"]:
-        if len(activity.value) == 1:
-            return
-            
-        room_num = activity.var.replace("trigger", "")
-        
-        t = threading.Thread(target=process_room_request, args=(room_num, activity.value))
-        t.daemon = True
-        t.start()
-
+# ==================== 【手動停止をキャッチする設定】 ====================
 def emergency_shutdown(signum, frame):
     print(f"\n🛑 手動停止（シグナル {signum}）を検知しました！緊急シャットダウンを開始します。")
     reset_scratch_variables()
     sys.exit(0)
 
-signal.signal(signal.SIGINT, emergency_shutdown)
-signal.signal(signal.SIGTERM, emergency_shutdown)
+signal.signal(signal.SIGINT, emergency_shutdown)   # Ctrl+C 用
+signal.signal(signal.SIGTERM, emergency_shutdown)  # GitHubの「Cancel run」用
 
+
+# ==================== 【共通のリセット関数】 ====================
 def reset_scratch_variables():
-    # 安全な関数（safe_set_var）を使うとロックがデッドロックを起こすリスクがあるため、
-    # 緊急リセット時だけは直接connを叩く（ただしスリープを入れて安全性を高める）
     global conn
     try:
         if 'conn' in globals() and conn is not None:
@@ -186,6 +193,23 @@ def reset_scratch_variables():
 
 
 # ==================== 【メインループ】 ====================
+print("ログイン処理を開始します...")
+try:
+    session = sa.login(USERNAME, PASSWORD)
+    conn = session.connect_cloud(PROJECT_ID)
+    print(f"ログイン成功: {session.username}")
+
+    # 初期化時の連投BANを防ぐため安全に関数を経由
+    safe_set_var("trigger1", "9")
+    safe_set_var("trigger2", "9")
+    safe_set_var("trigger3", "9")
+    safe_set_var("trigger4", "9")
+
+    events = conn.events()
+except Exception as e_init:
+    print(f"❌ 初期接続に失敗しました: {e_init}")
+    events = None
+
 print("Scratchからの質問入力を待っています...（4部屋完全同時・マルチスレッド安全版）")
 start_time = time.time()
 
@@ -196,6 +220,7 @@ try:
             print(f"⏰ 予定の稼働時間（{LIFETIME_SECONDS}秒）に達しました。安全に終了します。")
             break
 
+        # イベントリスナーが動いていない（または切断された）場合、再接続する
         if events is None or not events.running:
             print("🔄 Scratchへの接続を開始（または再接続）します...")
             try:
@@ -238,4 +263,3 @@ finally:
     reset_scratch_variables()
 
 print("👋 すべての処理を正常終了しました。")
-
