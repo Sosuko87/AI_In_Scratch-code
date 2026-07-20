@@ -23,22 +23,6 @@ LIFETIME_SECONDS = 17700  # 295分（4時間55分）
 
 # ルームごとの最新タイマーIDを管理する辞書
 room_timer_counts = {}
-# 🔑 スレッド間の衝突を防ぐためのロックと、安全な関数を上部に追加
-scratch_lock = threading.Lock()
-
-def safe_set_var(var_name, value):
-    global conn
-    with scratch_lock:
-        if 'conn' in globals() and conn is not None:
-            conn.set_var(var_name, value)
-            time.sleep(0.15) # サーバーの過負荷防止
-
-def safe_get_var(var_name):
-    global conn
-    with scratch_lock:
-        if 'conn' in globals() and conn is not None:
-            return conn.get_var(var_name)
-    return None
 
 def numbers_to_text(number_string):
     alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.?!,'"
@@ -99,7 +83,6 @@ def timeout_monitor(room_num, my_count):
         print(f"タイムアウト書き込み失敗: {e}")
 
 # 各ルームの処理を完全に独立して実行する中身の関数
-# 各ルームの処理を完全に独立して実行する中身の関数
 def process_room_request(room_num, activity_value):
     trigger_var = f"trigger{room_num}"
     text_var = f"text_from_python{room_num}"
@@ -119,23 +102,23 @@ def process_room_request(room_num, activity_value):
         user_question = numbers_to_text(activity_value) + "(You can only use alphabets, spaces, numbers and terminal punctuations)"
         print(f"=== [部屋{room_num}] 翻訳した質問: 「{user_question}」 ===")
         
-        safe_set_var(trigger_var, "1") # 👈 差し替え
+        conn.set_var(trigger_var, "1")
         
-        url = f"https://pollinations.ai{urllib.parse.quote(user_question)}"
+        url = f"https://text.pollinations.ai/{urllib.parse.quote(user_question)}"
         payload = {'model': 'openai'}
         
         response = requests.get(url, params=payload, timeout=60)
         print(f"=== [部屋{room_num}] AIの応答コード: {response.status_code} ===")
         
-        safe_set_var(trigger_var, "3") # 👈 差し替え
+        conn.set_var(trigger_var, "3")
         
         if response.status_code == 200:
             ai_reply = response.text.strip()
-            print(f"=== [部屋{room_num} ] AIの生回答: 「{ai_reply}」 ===")
+            print(f"=== [部屋{room_num}] AIの生回答: 「{ai_reply}」 ===")
             
             if "<html" in ai_reply.lower() or "<doctype" in ai_reply.lower():
                 print(f"❌ [部屋{room_num} エラー] AIがエラー画面(HTML)を返しました。")
-                safe_set_var(trigger_var, "9") # 👈 差し替え
+                conn.set_var(trigger_var, "9")
                 return
             
             number_string = text_to_numbers(ai_reply)
@@ -145,24 +128,23 @@ def process_room_request(room_num, activity_value):
             
             for i in range(0, total_length, chunk_size):
                 chunk = number_string[i:i+chunk_size]
-                safe_set_var(text_var, chunk) # 👈 差し替え
-                time.sleep(0.4)
+                conn.set_var(text_var, chunk)
+                time.sleep(0.5)
             
-            safe_set_var(text_var, "1") # 👈 差し替え
+            conn.set_var(text_var, "1")
             time.sleep(0.5)
             print(f"✨ [部屋{room_num} 大成功] すべてのデータを送信完了しました！")
             
         else:
             print(f"❌ [部屋{room_num} エラー] サーバーエラー: {response.status_code}")
-            safe_set_var(trigger_var, "9") # 👈 差し替え
+            conn.set_var(trigger_var, "9")
     except Exception as e:
         print(f"❌ [部屋{room_num} 重大エラー] クラッシュしました: {e}")
         
     finally:
-        if safe_get_var(trigger_var) != "9": # 👈 差し替え
-            safe_set_var(trigger_var, "0")   # 👈 差し替え
+        if conn.get_var(trigger_var) != "9":
+            conn.set_var(trigger_var, "0")
         print(f"🏁 [スレッド終了] 部屋{room_num} の処理が終わり、待機状態に戻りました。")
-
 
 
 @events.event
