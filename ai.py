@@ -87,11 +87,10 @@ def process_room_request(room_num, activity_value):
     trigger_var = f"trigger{room_num}"
     text_var = f"text_from_python{room_num}"
     
-    # ───【最新タイマー起動システム】──
-    # この部屋のタイマーIDを1つ進める
     current_count = room_timer_counts.get(room_num, 0) + 1
     room_timer_counts[room_num] = current_count
     
+    # ───【最新タイマー起動システム】──
     timer_thread = threading.Thread(target=timeout_monitor, args=(room_num, current_count))
     timer_thread.daemon = True
     timer_thread.start()
@@ -102,7 +101,7 @@ def process_room_request(room_num, activity_value):
         user_question = numbers_to_text(activity_value) + "(You can only use alphabets, spaces, numbers and terminal punctuations)"
         print(f"=== [部屋{room_num}] 翻訳した質問: 「{user_question}」 ===")
         
-        conn.set_var(trigger_var, "1")
+        safe_set_var(trigger_var, "1")  # 👈 差し替え
         
         url = f"https://text.pollinations.ai/{urllib.parse.quote(user_question)}"
         payload = {'model': 'openai'}
@@ -110,7 +109,7 @@ def process_room_request(room_num, activity_value):
         response = requests.get(url, params=payload, timeout=60)
         print(f"=== [部屋{room_num}] AIの応答コード: {response.status_code} ===")
         
-        conn.set_var(trigger_var, "3")
+        safe_set_var(trigger_var, "3")  # 👈 差し替え
         
         if response.status_code == 200:
             ai_reply = response.text.strip()
@@ -118,7 +117,7 @@ def process_room_request(room_num, activity_value):
             
             if "<html" in ai_reply.lower() or "<doctype" in ai_reply.lower():
                 print(f"❌ [部屋{room_num} エラー] AIがエラー画面(HTML)を返しました。")
-                conn.set_var(trigger_var, "9")
+                safe_set_var(trigger_var, "9")  # 👈 差し替え
                 return
             
             number_string = text_to_numbers(ai_reply)
@@ -128,22 +127,22 @@ def process_room_request(room_num, activity_value):
             
             for i in range(0, total_length, chunk_size):
                 chunk = number_string[i:i+chunk_size]
-                conn.set_var(text_var, chunk)
-                time.sleep(0.5)
+                safe_set_var(text_var, chunk)  # 👈 差し替え
+                time.sleep(0.4)  # safe_set_var内のウェイト(0.15s)と合わせて約0.55秒空くため安全
             
-            conn.set_var(text_var, "1")
+            safe_set_var(text_var, "1")  # 👈 差し替え
             time.sleep(0.5)
             print(f"✨ [部屋{room_num} 大成功] すべてのデータを送信完了しました！")
             
         else:
             print(f"❌ [部屋{room_num} エラー] サーバーエラー: {response.status_code}")
-            conn.set_var(trigger_var, "9")
+            safe_set_var(trigger_var, "9")  # 👈 差し替え
     except Exception as e:
         print(f"❌ [部屋{room_num} 重大エラー] クラッシュしました: {e}")
         
     finally:
-        if conn.get_var(trigger_var) != "9":
-            conn.set_var(trigger_var, "0")
+        if safe_get_var(trigger_var) != "9":  # 👈 差し替え
+            safe_set_var(trigger_var, "0")    # 👈 差し替え
         print(f"🏁 [スレッド終了] 部屋{room_num} の処理が終わり、待機状態に戻りました。")
 
 
@@ -159,28 +158,27 @@ def on_set(activity):
         t.daemon = True
         t.start()
 
-# ==================== 【手動停止をキャッチする設定】 ====================
 def emergency_shutdown(signum, frame):
-    """手動でキャンセル（停止）されたときに強制的に呼び出される関数"""
     print(f"\n🛑 手動停止（シグナル {signum}）を検知しました！緊急シャットダウンを開始します。")
     reset_scratch_variables()
-    sys.exit(0)  # 安全にプログラムを終了させる
+    sys.exit(0)
 
-# GitHub Actionsのキャンセルボタンや、Ctrl+Cの入力を監視する
-signal.signal(signal.SIGINT, emergency_shutdown)   # Ctrl+C 用
-signal.signal(signal.SIGTERM, emergency_shutdown)  # GitHubの「Cancel run」用
+signal.signal(signal.SIGINT, emergency_shutdown)
+signal.signal(signal.SIGTERM, emergency_shutdown)
 
-
-# ==================== 【共通のリセット関数】 ====================
 def reset_scratch_variables():
-    """Scratchの変数を安全に99にリセットする関数（使い回せるように分離）"""
+    # 安全な関数（safe_set_var）を使うとロックがデッドロックを起こすリスクがあるため、
+    # 緊急リセット時だけは直接connを叩く（ただしスリープを入れて安全性を高める）
     global conn
     try:
         if 'conn' in globals() and conn is not None:
             print("🔄 Scratchのトリガーをすべて99にリセットしています...")
             conn.set_var("trigger1", "99")
+            time.sleep(0.2)
             conn.set_var("trigger2", "99")
+            time.sleep(0.2)
             conn.set_var("trigger3", "99")
+            time.sleep(0.2)
             conn.set_var("trigger4", "99")
             print("✅ リセット完了しました。")
     except Exception as e_final:
@@ -188,18 +186,16 @@ def reset_scratch_variables():
 
 
 # ==================== 【メインループ】 ====================
-print("Scratchからの質問入力を待っています...（4部屋完全同時・マルチスレッド版）")
+print("Scratchからの質問入力を待っています...（4部屋完全同時・マルチスレッド安全版）")
 start_time = time.time()
 
 try:
     while True:
-        # 4時間55分（17700秒）経ったら終了
         elapsed = time.time() - start_time
         if elapsed >= LIFETIME_SECONDS:
             print(f"⏰ 予定の稼働時間（{LIFETIME_SECONDS}秒）に達しました。安全に終了します。")
             break
 
-        # イベントリスナーが動いていない（または切断された）場合、起動・再接続する
         if events is None or not events.running:
             print("🔄 Scratchへの接続を開始（または再接続）します...")
             try:
@@ -232,15 +228,14 @@ try:
                 time.sleep(10)
                 continue
 
-        # 1秒ごとにチェック
         time.sleep(1)
 
 except Exception as e_main:
     print(f"🚨 ループ内で予期せぬ重大なエラーが発生しました: {e_main}")
 
 finally:
-    # 正常終了、または想定内のバグで落ちたときの後処理
     print("👋 プログラムの終了処理を実行します...")
     reset_scratch_variables()
 
 print("👋 すべての処理を正常終了しました。")
+
